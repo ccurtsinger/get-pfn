@@ -8,9 +8,10 @@ clean:
 get-pfn: get-pfn.c
 	$(CC) -o $@ get-pfn.c
 
-grant-access: get-pfn
-	chmod a+x get-pfn
-	sudo setcap cap_sys_admin+ep get-pfn
+install: get-pfn
+	cp get-pfn /usr/local/bin/get-pfn
+	chmod a+x /usr/local/bin/get-pfn
+	setcap cap_sys_admin+ep /usr/local/bin/get-pfn
 
-.PHONY: all clean grant-access
+.PHONY: all clean install
 
