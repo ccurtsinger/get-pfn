@@ -18,9 +18,15 @@ typedef struct pfn_info {
   bool present : 1;
 } __attribute__((packed)) pfn_info_t;
 
+FILE* pagemap;
+size_t page_size;
+
+void print_pfn(uint64_t address);
+
 int main(int argc, char** argv) {
-  if(argc != 3) {
-    fprintf(stderr, "Usage: %s <pid> <virtual address>\n", argv[0]);
+  if(argc != 2 && argc != 3) {
+    fprintf(stderr, "Usage: %s <pid>\n", argv[0]);
+    fprintf(stderr, "       %s <pid> <virtual address>\n", argv[0]);
     return 1;
   }
 
@@ -30,42 +36,67 @@ int main(int argc, char** argv) {
     fprintf(stderr, "Invalid pid %s\n", argv[1]);
     return 1;
   }
-  
-  // Read in the virtual address
-  uint64_t address;
-  if(sscanf(argv[2], "0x%lx", &address) != 1) {
-    fprintf(stderr, "Invalid address %s\n", argv[2]);
-    return 1;
-  }
 
-  // Compute page index and offset
-  size_t page_size = getpagesize();
-
-  size_t page_index = address / page_size;
-  size_t page_offset = address % page_size;
+  // Get the system page size
+  page_size = getpagesize();
 
   // Generate the filename for the pagemap
   char filename[256];
   snprintf(filename, 256, "/proc/%d/pagemap", pid);
 
   // Open the pagemap file
-  FILE* f = fopen(filename, "rb");
-  if(f == NULL) {
-    fprintf(stderr, "Failed to open procmap for process %d. Does the process exist?\n", pid);
+  pagemap = fopen(filename, "rb");
+  if(pagemap == NULL) {
+    fprintf(stderr, "Failed to open pagemap for process %d. Does the process exist?\n", pid);
     return 2;
   }
+  
+  // Are we running in single address mode?
+  if(argc == 3) {
+    // Read in the virtual address
+    uint64_t address;
+    if(sscanf(argv[2], "0x%lx\n", &address) != 1) {
+      fprintf(stderr, "Invalid address %s\n", argv[2]);
+      return 1;
+    }
+    print_pfn(address);
+    
+  } else {
+    // Running in multi-address mode. Read addresses from stdin
+    char* line = NULL;
+    size_t line_length = 0;
+    
+    while(getline(&line, &line_length, stdin) != -1) {
+      uint64_t address;
+      if(sscanf(line, "0x%lx", &address) != 1) {
+        fprintf(stderr, "Invalid address %s\n", line);
+        exit(2);
+      }
+      print_pfn(address);
+    }
+    
+    free(line);
+  }
+
+  return 0;
+}
+
+void print_pfn(uint64_t address) {
+  // Compute page index and offset
+  size_t page_index = address / page_size;
+  size_t page_offset = address % page_size;
 
   // Seek to the entry for the specified virtual page
-  if(fseek(f, page_index * sizeof(pfn_info_t), SEEK_SET) == -1) {
+  if(fseek(pagemap, page_index * sizeof(pfn_info_t), SEEK_SET) == -1) {
     fprintf(stderr, "Failed to seek to requested entry in pagemap.\n");
-    return 2;
+    exit(2);
   }
 
   // Read the entry
   pfn_info_t entry;
-  if(fread(&entry, sizeof(pfn_info_t), 1, f) != 1) {
+  if(fread(&entry, sizeof(pfn_info_t), 1, pagemap) != 1) {
     fprintf(stderr, "Failed to read pagemap entry.\n");
-    return 2;
+    exit(2);;
   }
 
   if(!entry.present) {
@@ -75,7 +106,5 @@ int main(int argc, char** argv) {
   } else {
     printf("0x%016lx\n", entry.pfn * page_size + page_offset);
   }
-
-  return 0;
 }
 
