@@ -1,17 +1,23 @@
-CC := clang
+CC ?= clang
+CFLAGS ?= -fPIC
+PREFIX ?= /usr/local
 
-all: get-pfn
+all: get-pfn libpfn.so
 
 clean:
 	rm -f get-pfn
 
 get-pfn: get-pfn.c
-	$(CC) -o $@ get-pfn.c
+	$(CC) $(CFLAGS) -o $@ $<
 
-install: get-pfn
-	cp get-pfn /usr/local/bin/get-pfn
-	chmod a+x /usr/local/bin/get-pfn
-	setcap cap_sys_admin+ep /usr/local/bin/get-pfn
+libpfn.so: libpfn.c
+	$(CC) $(CFLAGS) -shared -o $@ $<
+
+install: get-pfn libpfn.so
+	cp get-pfn $(PREFIX)/bin/get-pfn
+	chmod a+x $(PREFIX)/bin/get-pfn
+	setcap cap_sys_admin+ep $(PREFIX)/bin/get-pfn
+	cp libpfn.so $(PREFIX)/lib/libpfn.so
 
 .PHONY: all clean install
 

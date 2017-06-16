@@ -21,7 +21,7 @@ typedef struct pfn_info {
 FILE* pagemap;
 size_t page_size;
 
-void print_pfn(uint64_t address);
+uint64_t get_pfn(uint64_t address);
 
 int main(int argc, char** argv) {
   if(argc != 2 && argc != 3) {
@@ -59,29 +59,23 @@ int main(int argc, char** argv) {
       fprintf(stderr, "Invalid address %s\n", argv[2]);
       return 1;
     }
-    print_pfn(address);
+    uint64_t pfn = get_pfn(address);
+    printf("0x%016lx\n", pfn);
     
   } else {
     // Running in multi-address mode. Read addresses from stdin
-    char* line = NULL;
-    size_t line_length = 0;
-    
-    while(getline(&line, &line_length, stdin) != -1) {
-      uint64_t address;
-      if(sscanf(line, "0x%lx", &address) != 1) {
-        fprintf(stderr, "Invalid address %s\n", line);
-        exit(2);
-      }
-      print_pfn(address);
+    uint64_t address;
+    while(fread(&address, sizeof(uint64_t), 1, stdin) == 1) {
+      fprintf(stderr, "0x%016lx\n", address);
+      uint64_t pfn = get_pfn(address);
+      fwrite(&pfn, sizeof(uint64_t), 1, stdout);
     }
-    
-    free(line);
   }
 
   return 0;
 }
 
-void print_pfn(uint64_t address) {
+uint64_t get_pfn(uint64_t address) {
   // Compute page index and offset
   size_t page_index = address / page_size;
   size_t page_offset = address % page_size;
@@ -98,13 +92,8 @@ void print_pfn(uint64_t address) {
     fprintf(stderr, "Failed to read pagemap entry.\n");
     exit(2);;
   }
-
-  if(!entry.present) {
-    printf("Not present\n");
-  } else if(entry.swapped) {
-    printf("Swapped\n");
-  } else {
-    printf("0x%016lx\n", entry.pfn * page_size + page_offset);
-  }
+  
+  if(entry.present) return entry.pfn * page_size + page_offset;
+  else return 0;
 }
 
