@@ -18,7 +18,7 @@ typedef struct pfn_info {
   bool present : 1;
 } __attribute__((packed)) pfn_info_t;
 
-FILE* pagemap;
+int pagemap_fd;
 size_t page_size;
 
 uint64_t get_pfn(uint64_t address);
@@ -45,14 +45,17 @@ int main(int argc, char** argv) {
   snprintf(filename, 256, "/proc/%d/pagemap", pid);
 
   // Open the pagemap file
-  pagemap = fopen(filename, "rb");
-  if(pagemap == NULL) {
+  pagemap_fd = open(filename, O_RDONLY);
+  if(pagemap_fd == -1) {
     fprintf(stderr, "Failed to open pagemap for process %d. Does the process exist?\n", pid);
     return 2;
   }
   
   // Are we running in single address mode?
   if(argc == 3) {
+    //setvbuf(stdin, NULL, _IONBF, 0);
+    //setvbuf(stdout, NULL, _IONBF, 0);
+
     // Read in the virtual address
     uint64_t address;
     if(sscanf(argv[2], "0x%lx\n", &address) != 1) {
@@ -66,9 +69,9 @@ int main(int argc, char** argv) {
     // Running in multi-address mode. Read addresses from stdin
     uint64_t address;
     while(fread(&address, sizeof(uint64_t), 1, stdin) == 1) {
-      fprintf(stderr, "0x%016lx\n", address);
       uint64_t pfn = get_pfn(address);
       fwrite(&pfn, sizeof(uint64_t), 1, stdout);
+      fflush(stdout);
     }
   }
 
@@ -81,16 +84,16 @@ uint64_t get_pfn(uint64_t address) {
   size_t page_offset = address % page_size;
 
   // Seek to the entry for the specified virtual page
-  if(fseek(pagemap, page_index * sizeof(pfn_info_t), SEEK_SET) == -1) {
+  if(lseek(pagemap_fd, page_index * sizeof(pfn_info_t), SEEK_SET) == -1) {
     fprintf(stderr, "Failed to seek to requested entry in pagemap.\n");
     exit(2);
   }
 
   // Read the entry
   pfn_info_t entry;
-  if(fread(&entry, sizeof(pfn_info_t), 1, pagemap) != 1) {
+  if(read(pagemap_fd, &entry, sizeof(pfn_info_t)) != sizeof(pfn_info_t)) {
     fprintf(stderr, "Failed to read pagemap entry.\n");
-    exit(2);;
+    exit(2);
   }
   
   if(entry.present) return entry.pfn * page_size + page_offset;
